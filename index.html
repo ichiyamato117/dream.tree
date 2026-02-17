@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Dream Tree - Growing Trunk</title>
+    <title>Dream Tree Forest</title>
     <style>
         body { margin: 0; background: #fdfcf0; font-family: sans-serif; overflow: hidden; touch-action: none; }
         #viewport { width: 100vw; height: 100vh; cursor: grab; overflow: hidden; background: linear-gradient(#e0f7fa, #fdfcf0); }
@@ -81,33 +81,82 @@
         let forest = JSON.parse(localStorage.getItem('dreamForest')) || { "My Dream": [] };
         let currentTreeName = Object.keys(forest)[0];
         let selectedParentId = null, scale = 1, viewX = 0, viewY = 0, isPanning = false, panStartX, panStartY, draggedNode = null;
+        let lastPinchDist = 0; // ピンチ操作用
 
         function init() { updateSelector(); setupInteractions(); resetView(); render(); }
 
         function resetView() {
-            scale = 0.8;
+            scale = 0.5; // 少し引き気味で開始
             const tree = forest[currentTreeName];
             if (tree.length > 0) {
                 viewX = window.innerWidth / 2 - tree[0].x * scale;
                 viewY = window.innerHeight / 2 - (tree[0].y - 200) * scale;
             } else {
-                viewX = window.innerWidth / 2 - 2500 * scale; viewY = window.innerHeight / 2 - 2500 * scale;
+                viewX = window.innerWidth / 2 - 2500 * scale; 
+                viewY = window.innerHeight / 2 - 2500 * scale;
             }
             applyTransform();
         }
 
         function setupInteractions() {
             const vp = document.getElementById('viewport');
+            
+            vp.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    lastPinchDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                } else if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    if (touch.target.classList.contains('node')) {
+                        draggedNode = forest[currentTreeName].find(n => n.id == touch.target.dataset.id);
+                    } else {
+                        isPanning = true;
+                        panStartX = touch.clientX - viewX;
+                        panStartY = touch.clientY - viewY;
+                    }
+                }
+            }, { passive: false });
+
+            vp.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 2) {
+                    const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                    const zoom = dist / lastPinchDist;
+                    scale = Math.min(Math.max(0.05, scale * zoom), 3); // 下限を 0.05 に拡大
+                    lastPinchDist = dist;
+                    applyTransform();
+                } else if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    if (draggedNode) {
+                        draggedNode.x = (touch.clientX - viewX) / scale;
+                        draggedNode.y = (touch.clientY - viewY) / scale;
+                        render();
+                    } else if (isPanning) {
+                        viewX = touch.clientX - panStartX;
+                        viewY = touch.clientY - panStartY;
+                        applyTransform();
+                    }
+                }
+            }, { passive: false });
+
+            vp.addEventListener('touchend', () => {
+                if (draggedNode) save();
+                draggedNode = null;
+                isPanning = false;
+            });
+
+            // マウス操作（PC用）
             vp.onpointerdown = (e) => {
+                if (e.pointerType === 'touch') return;
                 if (e.target.classList.contains('node')) draggedNode = forest[currentTreeName].find(n => n.id == e.target.dataset.id);
                 else { isPanning = true; panStartX = e.clientX - viewX; panStartY = e.clientY - viewY; }
             };
             window.onpointermove = (e) => {
+                if (e.pointerType === 'touch') return;
                 if (draggedNode) { draggedNode.x = (e.clientX - viewX) / scale; draggedNode.y = (e.clientY - viewY) / scale; render(); }
                 else if (isPanning) { viewX = e.clientX - panStartX; viewY = e.clientY - panStartY; applyTransform(); }
             };
             window.onpointerup = () => { if (draggedNode) save(); draggedNode = null; isPanning = false; };
-            vp.onwheel = (e) => { e.preventDefault(); scale *= (e.deltaY > 0 ? 0.95 : 1.05); scale = Math.min(Math.max(0.1, scale), 3); applyTransform(); };
+            vp.onwheel = (e) => { e.preventDefault(); scale *= (e.deltaY > 0 ? 0.95 : 1.05); scale = Math.min(Math.max(0.05, scale), 3); applyTransform(); };
         }
 
         function applyTransform() { document.getElementById('world').style.transform = `translate(${viewX}px, ${viewY}px) scale(${scale})`; }
@@ -119,9 +168,8 @@
             svg.innerHTML = ''; nodesLayer.innerHTML = '';
             document.getElementById('seed-btn').style.display = tree.length === 0 ? 'block' : 'none';
 
-            // ✨ 全体の枝の数に基づいてベースの太さを決める（夢が増えるほど成長！）
             const totalNodes = tree.length;
-            const growthFactor = Math.floor(totalNodes / 2); // 2個増えるごとに太さ+1
+            const growthFactor = Math.floor(totalNodes / 2);
 
             tree.forEach((node, index) => {
                 if (node.parentId) {
@@ -131,12 +179,9 @@
                     const dy = parent.y - node.y;
                     const d = `M ${parent.x} ${parent.y} C ${parent.x} ${parent.y - dy * 0.85} ${node.x} ${parent.y - dy * 0.15} ${node.x} ${node.y}`;
                     path.setAttribute("d", d);
-                    
-                    // ✨ 成長連動の太さ計算
                     const depth = getDepth(node);
                     const baseWidth = Math.max(4, 25 - depth * 5);
                     path.setAttribute("stroke-width", baseWidth + growthFactor); 
-                    
                     svg.appendChild(path);
                 }
                 const div = document.createElement('div');
@@ -145,16 +190,22 @@
                 div.dataset.id = node.id;
                 div.innerText = node.text;
                 div.style.animationDelay = `${index * -0.5}s`;
-                let count = 0;
-                div.onclick = (e) => {
-                    count++;
-                    setTimeout(() => {
-                        if (count === 1) showModal(node.id);
-                        else if (count === 2) cycleStatus(node.id);
-                        else if (count === 3) deleteNode(node.id);
-                        count = 0;
-                    }, 300);
-                };
+                
+                let clickCount = 0;
+                let clickTimer = null;
+
+                div.addEventListener('click', (e) => {
+                    clickCount++;
+                    if (clickCount === 1) {
+                        clickTimer = setTimeout(() => {
+                            if (clickCount === 1) showModal(node.id); // 1回：枝追加
+                            else if (clickCount === 2) cycleStatus(node.id); // 2回：紅葉
+                            else if (clickCount === 3) deleteNode(node.id); // 3回：削除
+                            clickCount = 0;
+                        }, 400); // 判定時間を少し長めに(400ms)
+                    }
+                });
+                
                 nodesLayer.appendChild(div);
             });
         }
@@ -177,8 +228,4 @@
         function createNode(text, x, y, parentId = null, isRoot = false) { forest[currentTreeName].push({ id: Date.now() + Math.random(), text, x, y, parentId, status: 0, isRoot }); }
         function addBranch(pId, text, index, total) { const parent = forest[currentTreeName].find(n => n.id === pId); const angle = ((-90 - 35) + (70 / (total === 1 ? 1 : total - 1)) * index) * (Math.PI / 180); const dist = 320; createNode(text, parent.x + Math.cos(angle)*dist, parent.y + Math.sin(angle)*dist, pId); }
         function getDepth(node) { let d = 0, curr = node; while(curr && curr.parentId) { d++; curr = forest[currentTreeName].find(n => n.id === curr.parentId); } return d; }
-        function captureImage() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(forest)); const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr); downloadAnchorNode.setAttribute("download", "dream_tree_data.json"); document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove(); alert("データを保存しました。"); }
-        init();
-    </script>
-</body>
-</html>
+        function captureImage() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(forest)); const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr); downloadAnchorNode.setAttribute("download", "dream_tree_data.json"); document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove(); alert("データを保存しました。");
