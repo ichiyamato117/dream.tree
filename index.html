@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Dream Tree - Swaying Edition</title>
+    <title>Dream Tree Forest</title>
     <style>
         body { margin: 0; background: #fdfcf0; font-family: sans-serif; overflow: hidden; touch-action: none; }
         #viewport { width: 100vw; height: 100vh; cursor: grab; overflow: hidden; background: linear-gradient(#e0f7fa, #fdfcf0); }
@@ -12,20 +12,17 @@
         
         .branch-path { fill: none; stroke: #5d4037; stroke-linecap: round; }
 
-        /* 🍃 葉っぱのデザインとゆらぎのアニメーション */
         .node {
             position: absolute; width: 130px; height: 65px;
             cursor: pointer; z-index: 10; font-weight: bold; font-size: 14px;
             display: flex; align-items: center; justify-content: center;
-            user-select: none; transform-origin: center center;
+            user-select: none; transform: translate(-50%, -50%);
             border-radius: 50% 10% 50% 10% / 50% 10% 50% 10%;
             transition: background 0.3s, transform 0.1s; color: white; padding: 10px; box-sizing: border-box; text-align: center;
             box-shadow: 2px 4px 8px rgba(0,0,0,0.15);
-            /* 風のゆらぎアニメーションを適用（個別設定はJSで行う） */
             animation: sway 4s ease-in-out infinite;
         }
 
-        /* 🔄 ゆらぎの定義：ほんの少しだけ角度と位置を変える */
         @keyframes sway {
             0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
             50% { transform: translate(-50%, -52%) rotate(2deg); }
@@ -35,7 +32,7 @@
             width: 220px; height: 110px; background: #3e2723 !important; 
             border-radius: 50% 50% 20% 20% / 100% 100% 10% 10% !important;
             font-size: 24px; border-bottom: 12px solid #261613;
-            animation: none; /* 土台は揺らさない */
+            animation: none; z-index: 5; /* 枝の下に潜り込ませる */
         }
 
         .status-0 { background: #66bb6a; } .status-1 { background: #ffa726; } .status-2 { background: #ef5350; }
@@ -62,17 +59,15 @@
 
     <div class="guide-box">
         <b>【操作ガイド】</b><br>
-        1タップ：枝を伸ばす<br>
-        2タップ：紅葉（緑→黄→赤）<br>
-        3タップ：枝を削除<br>
-        ドラッグ：移動 / 背景ドラッグ：視点
+        1回：枝追加 / 2回：紅葉<br>
+        3回：削除 / ドラッグ：移動
     </div>
 
     <div class="menu-bar">
         <select id="tree-selector" onchange="switchTree()" style="padding:10px; border-radius:10px;"></select>
         <button onclick="resetView()" style="background:#ffa000;">🔍 木を見つける</button>
         <button onclick="addNewTree()">🆕 2本目を植える</button>
-        <button onclick="captureImage()" style="background:#0277bd;">📸 画像(データ)保存</button>
+        <button onclick="captureImage()" style="background:#0277bd;">📸 データ保存</button>
     </div>
 
     <div class="controls">
@@ -119,7 +114,7 @@
                 else if (isPanning) { viewX = e.clientX - panStartX; viewY = e.clientY - panStartY; applyTransform(); }
             };
             window.onpointerup = () => { if (draggedNode) save(); draggedNode = null; isPanning = false; };
-            vp.onwheel = (e) => { e.preventDefault(); scale *= (e.deltaY > 0 ? 0.95 : 1.05); applyTransform(); };
+            vp.onwheel = (e) => { e.preventDefault(); scale *= (e.deltaY > 0 ? 0.95 : 1.05); scale = Math.min(Math.max(0.1, scale), 3); applyTransform(); };
         }
 
         function applyTransform() { document.getElementById('world').style.transform = `translate(${viewX}px, ${viewY}px) scale(${scale})`; }
@@ -138,6 +133,7 @@
                     path.setAttribute("class", "branch-path");
                     
                     const dy = parent.y - node.y;
+                    // ✨ ヤマトさんの黄金比 0.85 / 0.15
                     const cp1y = parent.y - dy * 0.85; 
                     const cp2x = node.x;
                     const cp2y = parent.y - dy * 0.15;
@@ -154,10 +150,7 @@
                 div.style.left = node.x + 'px'; div.style.top = node.y + 'px';
                 div.dataset.id = node.id;
                 div.innerText = node.text;
-
-                // ✨ 葉っぱごとにゆらぎのタイミングをズラす
                 div.style.animationDelay = `${index * -0.5}s`;
-                div.style.animationDuration = `${3 + (index % 3)}s`;
                 
                 let count = 0;
                 div.onclick = (e) => {
@@ -192,18 +185,7 @@
         function createNode(text, x, y, parentId = null, isRoot = false) { forest[currentTreeName].push({ id: Date.now() + Math.random(), text, x, y, parentId, status: 0, isRoot }); }
         function addBranch(pId, text, index, total) { const parent = forest[currentTreeName].find(n => n.id === pId); const angle = ((-90 - 35) + (70 / (total === 1 ? 1 : total - 1)) * index) * (Math.PI / 180); const dist = 320; createNode(text, parent.x + Math.cos(angle)*dist, parent.y + Math.sin(angle)*dist, pId); }
         function getDepth(node) { let d = 0, curr = node; while(curr && curr.parentId) { d++; curr = forest[currentTreeName].find(n => n.id === curr.parentId); } return d; }
-        
-        // 📸 データ保存機能
-        function captureImage() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(forest));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "dream_tree_data.json");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
-            alert("木のデータを保存しました！画像として残すならスクリーンショットが一番綺麗ですよ。");
-        }
+        function captureImage() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(forest)); const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr); downloadAnchorNode.setAttribute("download", "dream_tree_data.json"); document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove(); alert("データを保存しました。"); }
 
         init();
     </script>
