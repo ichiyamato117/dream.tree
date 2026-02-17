@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Dream Tree Forest</title>
+    <title>Dream Tree - Growing Trunk</title>
     <style>
         body { margin: 0; background: #fdfcf0; font-family: sans-serif; overflow: hidden; touch-action: none; }
         #viewport { width: 100vw; height: 100vh; cursor: grab; overflow: hidden; background: linear-gradient(#e0f7fa, #fdfcf0); }
         #world { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
         svg { position: absolute; top: 0; left: 0; width: 5000px; height: 5000px; pointer-events: none; z-index: 1; }
         
-        .branch-path { fill: none; stroke: #5d4037; stroke-linecap: round; }
+        .branch-path { fill: none; stroke: #5d4037; stroke-linecap: round; transition: stroke-width 0.5s ease; }
 
         .node {
             position: absolute; width: 130px; height: 65px;
@@ -32,7 +32,7 @@
             width: 220px; height: 110px; background: #3e2723 !important; 
             border-radius: 50% 50% 20% 20% / 100% 100% 10% 10% !important;
             font-size: 24px; border-bottom: 12px solid #261613;
-            animation: none; z-index: 5; /* 枝の下に潜り込ませる */
+            animation: none; z-index: 5;
         }
 
         .status-0 { background: #66bb6a; } .status-1 { background: #ffa726; } .status-2 { background: #ef5350; }
@@ -40,12 +40,7 @@
         .menu-bar { position: fixed; top: 20px; left: 20px; z-index: 100; display: flex; flex-direction: column; gap: 10px; }
         .controls { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; }
         button { padding: 12px 20px; border: none; border-radius: 25px; background: #2e7d32; color: white; cursor: pointer; font-weight: bold; }
-        
-        .guide-box {
-            position: fixed; top: 20px; right: 20px; background: rgba(255,255,255,0.8);
-            padding: 10px 15px; border-radius: 12px; font-size: 12px; color: #333;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1); pointer-events: none; z-index: 100;
-        }
+        .guide-box { position: fixed; top: 20px; right: 20px; background: rgba(255,255,255,0.8); padding: 10px 15px; border-radius: 12px; font-size: 12px; color: #333; box-shadow: 0 2px 10px rgba(0,0,0,0.1); pointer-events: none; z-index: 100; }
     </style>
 </head>
 <body>
@@ -76,7 +71,6 @@
 
     <div id="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center;">
         <div style="background:white; padding:30px; border-radius:25px; width:85%; max-width:380px; text-align:center;">
-            <h3 style="color:#2e7d32;">夢の細分化</h3>
             <textarea id="node-input" rows="4" style="width:100%; padding:15px; border:2px solid #eee; border-radius:15px; font-size:16px; margin-bottom:15px;"></textarea>
             <button onclick="confirmInput()" style="width:100%; padding:15px; background:#2e7d32; color:white; border:none; border-radius:12px;">決定</button>
             <button onclick="closeModal()" style="background:none; border:none; color:#999; margin-top:10px;">キャンセル</button>
@@ -97,8 +91,7 @@
                 viewX = window.innerWidth / 2 - tree[0].x * scale;
                 viewY = window.innerHeight / 2 - (tree[0].y - 200) * scale;
             } else {
-                viewX = window.innerWidth / 2 - 2500 * scale; 
-                viewY = window.innerHeight / 2 - 2500 * scale;
+                viewX = window.innerWidth / 2 - 2500 * scale; viewY = window.innerHeight / 2 - 2500 * scale;
             }
             applyTransform();
         }
@@ -126,23 +119,24 @@
             svg.innerHTML = ''; nodesLayer.innerHTML = '';
             document.getElementById('seed-btn').style.display = tree.length === 0 ? 'block' : 'none';
 
+            // ✨ 全体の枝の数に基づいてベースの太さを決める（夢が増えるほど成長！）
+            const totalNodes = tree.length;
+            const growthFactor = Math.floor(totalNodes / 2); // 2個増えるごとに太さ+1
+
             tree.forEach((node, index) => {
                 if (node.parentId) {
                     const parent = tree.find(n => n.id === node.parentId);
                     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
                     path.setAttribute("class", "branch-path");
-                    
                     const dy = parent.y - node.y;
-                    // ✨ ヤマトさんの黄金比 0.85 / 0.15
-                    const cp1y = parent.y - dy * 0.85; 
-                    const cp2x = node.x;
-                    const cp2y = parent.y - dy * 0.15;
-                    
-                    const d = `M ${parent.x} ${parent.y} C ${parent.x} ${cp1y} ${cp2x} ${cp2y} ${node.x} ${node.y}`;
-                    
+                    const d = `M ${parent.x} ${parent.y} C ${parent.x} ${parent.y - dy * 0.85} ${node.x} ${parent.y - dy * 0.15} ${node.x} ${node.y}`;
                     path.setAttribute("d", d);
+                    
+                    // ✨ 成長連動の太さ計算
                     const depth = getDepth(node);
-                    path.setAttribute("stroke-width", Math.max(4, 25 - depth * 5)); 
+                    const baseWidth = Math.max(4, 25 - depth * 5);
+                    path.setAttribute("stroke-width", baseWidth + growthFactor); 
+                    
                     svg.appendChild(path);
                 }
                 const div = document.createElement('div');
@@ -151,7 +145,6 @@
                 div.dataset.id = node.id;
                 div.innerText = node.text;
                 div.style.animationDelay = `${index * -0.5}s`;
-                
                 let count = 0;
                 div.onclick = (e) => {
                     count++;
@@ -167,8 +160,7 @@
         }
 
         function cycleStatus(id) {
-            const tree = forest[currentTreeName];
-            const node = tree.find(n => n.id == id);
+            const node = forest[currentTreeName].find(n => n.id == id);
             node.status = (node.status + 1) % 3;
             if(node.status === 2) setChildrenStatus(id, 2);
             save(); render();
@@ -186,7 +178,6 @@
         function addBranch(pId, text, index, total) { const parent = forest[currentTreeName].find(n => n.id === pId); const angle = ((-90 - 35) + (70 / (total === 1 ? 1 : total - 1)) * index) * (Math.PI / 180); const dist = 320; createNode(text, parent.x + Math.cos(angle)*dist, parent.y + Math.sin(angle)*dist, pId); }
         function getDepth(node) { let d = 0, curr = node; while(curr && curr.parentId) { d++; curr = forest[currentTreeName].find(n => n.id === curr.parentId); } return d; }
         function captureImage() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(forest)); const downloadAnchorNode = document.createElement('a'); downloadAnchorNode.setAttribute("href", dataStr); downloadAnchorNode.setAttribute("download", "dream_tree_data.json"); document.body.appendChild(downloadAnchorNode); downloadAnchorNode.click(); downloadAnchorNode.remove(); alert("データを保存しました。"); }
-
         init();
     </script>
 </body>
